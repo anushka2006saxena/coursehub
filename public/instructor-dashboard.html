@@ -1,0 +1,216 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Instructor Dashboard — CourseHub</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700;800&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<div id="navbar" class="navbar"></div>
+
+<div class="dash-header">
+  <div class="container">
+    <h1 id="welcome">Instructor Dashboard</h1>
+    <p style="color:var(--muted);margin:0;">Manage your courses, students, and assignments.</p>
+  </div>
+</div>
+
+<div class="container section">
+  <div class="stat-row" id="statRow"></div>
+
+  <div class="section-title">
+    <h2>My Courses</h2>
+    <a class="btn btn-primary btn-small" href="post-course.html" style="text-decoration:none;">+ Create Course</a>
+  </div>
+  <div id="myCourses"><p style="color:var(--muted);">Loading…</p></div>
+
+  <div id="bulkEnrollForm" style="display:none;margin-top:24px;" class="form-card">
+    <h3>Bulk Enroll Students</h3>
+    <p style="font-size:0.85rem;color:var(--muted);">Course: <strong id="bulkCourseTitle"></strong></p>
+    <div class="form-group">
+      <label>Student emails (one per line, or comma-separated)</label>
+      <textarea id="bulkEmails" rows="5" placeholder="student1@college.edu
+student2@college.edu"></textarea>
+    </div>
+    <button class="btn btn-primary btn-block" id="submitBulkBtn">Enroll Students</button>
+    <div id="bulkResult" style="margin-top:14px;font-size:0.88rem;"></div>
+  </div>
+
+  <div class="section-title" style="margin-top:36px;">
+    <h2>My Students</h2>
+  </div>
+  <div id="studentsTable"><p style="color:var(--muted);">Loading…</p></div>
+
+  <div class="section-title" style="margin-top:36px;">
+    <h2>Assignments</h2>
+    <a class="btn btn-primary btn-small" href="post-assignment.html" style="text-decoration:none;">+ Post Assignment</a>
+  </div>
+  <div id="assignmentsList"><p style="color:var(--muted);">Loading…</p></div>
+</div>
+
+<footer>CourseHub — B.Tech Project · Assam downtown University<br><span style="font-size:0.72rem;opacity:0.7;">Under the guidance of Mr. Ravi &amp; Sunstone Faculty</span></footer>
+
+<script src="app.js"></script>
+<script>
+const user = requireRole("instructor");
+renderNavbar("dash");
+
+let myCourses = [];
+let myAssignments = [];
+
+async function render() {
+  if (!user) return;
+  document.getElementById("welcome").textContent = "Welcome back, " + user.name;
+
+
+  myCourses = await api.getInstructorCourses(user.email);
+
+  let totalStudents = 0, totalEarnings = 0;
+  const enrollCounts = await Promise.all(myCourses.map(c => api.getEnrollmentsForCourse(c._id)));
+  myCourses.forEach((c, i) => {
+    const count = enrollCounts[i].length;
+    totalStudents += count;
+    totalEarnings += count * c.price * 0.7;
+  });
+
+  document.getElementById("statRow").innerHTML = `
+    <div class="stat-card"><div class="num">${myCourses.length}</div><div class="label">Published Courses</div></div>
+    <div class="stat-card"><div class="num">${totalStudents}</div><div class="label">Total Students</div></div>
+    <div class="stat-card"><div class="num">${money(Math.round(totalEarnings))}</div><div class="label">Earnings (70% share)</div></div>
+  `;
+
+  const container = document.getElementById("myCourses");
+  container.innerHTML = myCourses.length === 0
+    ? `<div class="empty-state">You haven't published any courses yet. Click "Create Course" to add your first one.</div>`
+    : `<table>
+        <thead><tr><th>Course</th><th>Category</th><th>Price</th><th>Chapters</th><th>Quiz</th><th>Students</th><th></th></tr></thead>
+        <tbody>
+          ${myCourses.map((c, i) => `
+            <tr>
+              <td>${c.title}</td>
+              <td>${c.category}</td>
+              <td>${c.price === 0 ? '<span style="color:var(--green);">Free</span>' : money(c.price)}</td>
+              <td>${c.chapters.length}</td>
+              <td>${c.quiz.length > 0 ? c.quiz.length + " Qs" : "—"}</td>
+              <td>${enrollCounts[i].length}</td>
+              <td><button class="btn btn-outline btn-small bulk-btn" data-id="${c._id}" data-title="${c.title}">Bulk Enroll</button></td>
+            </tr>
+          `).join("")}
+        </tbody>
+      </table>`;
+
+  document.querySelectorAll(".bulk-btn").forEach(btn => {
+    btn.addEventListener("click", () => {
+      document.getElementById("bulkEnrollForm").style.display = "block";
+      document.getElementById("bulkEnrollForm").dataset.courseId = btn.dataset.id;
+      document.getElementById("bulkCourseTitle").textContent = btn.dataset.title;
+      document.getElementById("bulkResult").innerHTML = "";
+      document.getElementById("bulkEnrollForm").scrollIntoView({ behavior: "smooth" });
+    });
+  });
+
+  await renderStudentRoster();
+  await renderAssignments();
+}
+
+async function renderStudentRoster() {
+  const el = document.getElementById("studentsTable");
+  const roster = await api.getStudentRoster(user.email);
+
+  if (roster.length === 0) {
+    el.innerHTML = `<div class="empty-state">No students enrolled in your courses yet.</div>`;
+    return;
+  }
+
+  el.innerHTML = `
+    <table>
+      <thead><tr><th>Name</th><th>Email</th><th>Class</th><th>Enrollment No.</th><th>Assignments Submitted</th></tr></thead>
+      <tbody>
+        ${roster.map(s => `
+          <tr>
+            <td><a href="profile.html?email=${encodeURIComponent(s.email)}">${s.name}</a></td>
+            <td>${s.email}</td>
+            <td>${s.studentClass || "—"}</td>
+            <td>${s.enrollmentNumber || "—"}</td>
+            <td>${s.assignmentsSubmitted}</td>
+          </tr>
+        `).join("")}
+      </tbody>
+    </table>
+  `;
+}
+
+async function renderAssignments() {
+  const list = document.getElementById("assignmentsList");
+  myAssignments = await api.getAssignmentsForInstructor(user.email);
+
+  if (myAssignments.length === 0) {
+    list.innerHTML = `<div class="empty-state">No assignments posted yet.</div>`;
+    return;
+  }
+
+  const courseMap = {};
+  myCourses.forEach(c => courseMap[c._id] = c.title);
+
+  list.innerHTML = `
+    <table>
+      <thead><tr><th>Title</th><th>Course</th><th>Type</th><th>Due Date</th><th></th></tr></thead>
+      <tbody>
+        ${myAssignments.map(a => `
+          <tr>
+            <td>${a.title}</td>
+            <td>${courseMap[a.courseId] || "—"}</td>
+            <td>${a.type === "coding" ? `💻 ${a.language}` : "📝 Written"}</td>
+            <td>${new Date(a.dueDate).toLocaleDateString()}</td>
+            <td><a class="btn btn-outline btn-small" style="text-decoration:none;" href="submissions.html?assignment=${a._id}">View Submissions</a></td>
+          </tr>
+        `).join("")}
+      </tbody>
+    </table>`;
+}
+
+document.getElementById("submitBulkBtn").addEventListener("click", async () => {
+  const courseId = document.getElementById("bulkEnrollForm").dataset.courseId;
+  const raw = document.getElementById("bulkEmails").value;
+  const emails = raw.split(/[\n,]/).map(e => e.trim()).filter(Boolean);
+
+  if (emails.length === 0) {
+    alert("Paste at least one student email.");
+    return;
+  }
+
+  try {
+    const result = await api.bulkEnroll(courseId, emails);
+    document.getElementById("bulkResult").innerHTML = `
+      <p style="color:var(--green);font-weight:600;">Enrolled ${result.enrolled.length} student(s).</p>
+      ${result.skipped.length ? `<p style="color:var(--red);font-weight:600;">Skipped ${result.skipped.length}:</p>
+        <ul style="margin:0;padding-left:18px;font-size:0.85rem;color:var(--muted);">
+          ${result.skipped.map(s => `<li>${s.email} — ${s.reason}</li>`).join("")}
+        </ul>` : ""}
+    `;
+    document.getElementById("bulkEmails").value = "";
+    render();
+  } catch (err) {
+    alert(err.message);
+  }
+});
+
+// Small confirmation toast if we just came back from posting an assignment or course
+const justDid = new URLSearchParams(window.location.search).get("posted") === "1" ? "Assignment posted"
+  : new URLSearchParams(window.location.search).get("created") === "1" ? "Course published"
+  : null;
+if (justDid) {
+  const banner = document.createElement("div");
+  banner.textContent = "✓ " + justDid + " successfully.";
+  banner.style.cssText = "background:var(--green-dim);color:var(--green);border:1px solid var(--green);padding:10px 16px;border-radius:8px;margin-bottom:20px;font-size:0.88rem;";
+  document.querySelector(".container.section").prepend(banner);
+}
+
+render();
+</script>
+</body>
+</html>

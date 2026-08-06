@@ -1,0 +1,105 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Admin Dashboard — CourseHub</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700;800&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<div id="navbar" class="navbar"></div>
+
+<div class="dash-header">
+  <div class="container">
+    <h1 id="welcome">Admin Dashboard</h1>
+    <p style="color:var(--muted);margin:0;">Platform-wide overview of students, instructors, courses and enrollments.</p>
+  </div>
+</div>
+
+<div class="container section">
+  <div class="stat-row" id="statRow"></div>
+
+  <h2>All Courses</h2>
+  <div id="coursesTable"><p style="color:var(--muted);">Loading…</p></div>
+
+  <h2 style="margin-top:34px;">All Users</h2>
+  <div id="usersTable"><p style="color:var(--muted);">Loading…</p></div>
+</div>
+
+<footer>CourseHub — B.Tech Project · Assam downtown University<br><span style="font-size:0.72rem;opacity:0.7;">Under the guidance of Mr. Ravi &amp; Sunstone Faculty</span></footer>
+
+<script src="app.js"></script>
+<script>
+const user = requireRole("admin");
+renderNavbar("dash");
+
+(async () => {
+  if (!user) return;
+  document.getElementById("welcome").textContent = "Welcome back, " + user.name;
+
+  async function loadAll() {
+    const [stats, courses, users] = await Promise.all([
+      api.getAdminStats(),
+      api.getCourses(),
+      api.getAllUsers(),
+    ]);
+
+    document.getElementById("statRow").innerHTML = `
+      <div class="stat-card"><div class="num">${stats.totalStudents}</div><div class="label">Students</div></div>
+      <div class="stat-card"><div class="num">${stats.totalInstructors}</div><div class="label">Instructors</div></div>
+      <div class="stat-card"><div class="num">${stats.totalCourses}</div><div class="label">Courses</div></div>
+      <div class="stat-card"><div class="num">${stats.totalEnrollments}</div><div class="label">Enrollments</div></div>
+      <div class="stat-card"><div class="num">${stats.totalAssignments}</div><div class="label">Assignments Posted</div></div>
+    `;
+
+    document.getElementById("coursesTable").innerHTML = courses.length === 0
+      ? `<div class="empty-state">No courses published yet.</div>`
+      : `<table>
+          <thead><tr><th>Title</th><th>Category</th><th>Instructor</th><th>Price</th><th></th></tr></thead>
+          <tbody>
+            ${courses.map(c => `
+              <tr>
+                <td>${c.title}</td><td>${c.category}</td><td><a href="profile.html?email=${encodeURIComponent(c.instructorEmail||'')}">${c.instructor}</a></td><td>${c.price === 0 ? '<span style="color:var(--green);">Free</span>' : money(c.price)}</td>
+                <td><button class="btn btn-danger btn-small del-course-btn" data-id="${c._id}" data-title="${c.title}">Delete</button></td>
+              </tr>`).join("")}
+          </tbody>
+        </table>`;
+
+    document.getElementById("usersTable").innerHTML = users.length === 0
+      ? `<div class="empty-state">No users registered yet.</div>`
+      : `<table>
+          <thead><tr><th>Name</th><th>Email</th><th>Role</th><th></th></tr></thead>
+          <tbody>
+            ${users.map(u => `
+              <tr>
+                <td><a href="profile.html?email=${encodeURIComponent(u.email)}">${u.name}</a></td><td>${u.email}</td><td style="text-transform:capitalize;">${u.role}</td>
+                <td>${u.email === user.email ? "" : `<button class="btn btn-danger btn-small del-user-btn" data-id="${u._id}" data-email="${u.email}">Delete</button>`}</td>
+              </tr>`).join("")}
+          </tbody>
+        </table>`;
+
+    document.querySelectorAll(".del-course-btn").forEach(btn => {
+      btn.addEventListener("click", async () => {
+        if (!confirm(`Delete "${btn.dataset.title}"? This also removes its enrollments and assignments. This can't be undone.`)) return;
+        try { await api.deleteCourse(btn.dataset.id); loadAll(); }
+        catch (err) { alert(err.message); }
+      });
+    });
+
+    document.querySelectorAll(".del-user-btn").forEach(btn => {
+      btn.addEventListener("click", async () => {
+        if (!confirm(`Delete the account "${btn.dataset.email}"? This can't be undone.`)) return;
+        try { await api.deleteUser(btn.dataset.id); loadAll(); }
+        catch (err) { alert(err.message); }
+      });
+    });
+  }
+
+  await loadAll();
+})();
+</script>
+</body>
+</html>

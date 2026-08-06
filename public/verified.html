@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Email Verification — CourseHub</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700;800&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<div id="navbar" class="navbar"></div>
+
+<div class="form-card" style="text-align:center;">
+  <div id="content">
+    <p style="color:var(--muted);">Checking…</p>
+  </div>
+</div>
+
+<footer>CourseHub — B.Tech Project · Assam downtown University<br><span style="font-size:0.72rem;opacity:0.7;">Under the guidance of Mr. Ravi &amp; Sunstone Faculty</span></footer>
+
+<script src="app.js"></script>
+<script>
+renderNavbar();
+
+const status = new URLSearchParams(window.location.search).get("status");
+const content = document.getElementById("content");
+
+const messages = {
+  success: {
+    icon: "✅",
+    title: "Email verified!",
+    body: "Your account is now active. You can log in and start exploring courses.",
+    cta: `<a href="login.html" class="btn btn-primary btn-block">Go to Login</a>`,
+  },
+  expired: {
+    icon: "⏰",
+    title: "This link has expired",
+    body: "Verification links expire after 24 hours. Please request a new one from the login page.",
+    cta: `<a href="login.html" class="btn btn-primary btn-block">Back to Login</a>`,
+  },
+  invalid: {
+    icon: "❌",
+    title: "Invalid verification link",
+    body: "This link doesn't look right. Please check the email again or request a new one.",
+    cta: `<a href="login.html" class="btn btn-primary btn-block">Back to Login</a>`,
+  },
+  error: {
+    icon: "⚠️",
+    title: "Something went wrong",
+    body: "We couldn't verify your email right now. Please try again in a moment.",
+    cta: `<a href="login.html" class="btn btn-primary btn-block">Back to Login</a>`,
+  },
+};
+
+const m = messages[status] || messages.error;
+content.innerHTML = `
+  <div style="font-size:2.5rem;margin-bottom:10px;">${m.icon}</div>
+  <h2>${m.title}</h2>
+  <p style="color:var(--muted);">${m.body}</p>
+  <div style="margin-top:20px;">${m.cta}</div>
+`;
+</script>
+</body>
+</html>

@@ -1,0 +1,269 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Course — CourseHub</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700;800&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<div id="navbar" class="navbar"></div>
+
+<section class="course-hero">
+  <div class="container">
+    <span class="eyebrow" id="courseCategory">Category</span>
+    <h1 id="courseTitle">Loading…</h1>
+    <p id="courseInstructor" style="color:var(--muted);margin:0;"></p>
+  </div>
+</section>
+
+<div class="container course-layout">
+  <div>
+    <div class="video-box" id="videoBox">
+      <div class="play" id="playBtn">▶</div>
+      <span id="videoLabel">Select a chapter to start watching</span>
+    </div>
+
+    <div class="chapter-list" id="chapterList"></div>
+
+    <div id="quizSection" style="margin-top:26px;">
+      <h2>Quiz</h2>
+      <p style="color:var(--muted);font-size:0.9rem;">Answer all questions and submit to check your score.</p>
+      <div id="quizQuestions"></div>
+      <button class="btn btn-primary" id="submitQuiz">Submit Quiz</button>
+      <div id="quizResult"></div>
+    </div>
+  </div>
+
+  <div>
+    <div class="sidebar-card" id="enrollCard">
+      <h3 id="priceLabel">₹0</h3>
+      <p id="courseDesc" style="font-size:0.9rem;"></p>
+      <button class="btn btn-primary btn-block" id="enrollBtn">Enroll & Pay</button>
+      <p id="enrolledNote" style="display:none;color:var(--green);font-weight:600;font-size:0.9rem;margin-top:10px;">✓ You are enrolled in this course</p>
+    </div>
+
+    <div class="sidebar-card" id="progressCard" style="display:none;">
+      <h3>Your Progress</h3>
+      <div class="progress-bar"><div class="progress-fill" id="progressFill" style="width:0%"></div></div>
+      <p id="progressLabel" style="font-size:0.85rem;color:var(--muted);margin-top:8px;">0% complete</p>
+    </div>
+
+    <div class="cert-banner" id="certBanner" style="display:none;">
+      <p style="margin-bottom:10px;">🎓 You passed the quiz — certificate unlocked!</p>
+      <button class="btn btn-primary btn-small" id="downloadCertBtn">Download Certificate</button>
+    </div>
+  </div>
+</div>
+
+<canvas id="certCanvas" width="1000" height="700" style="display:none;"></canvas>
+
+<footer>CourseHub — B.Tech Project · Assam downtown University<br><span style="font-size:0.72rem;opacity:0.7;">Under the guidance of Mr. Ravi &amp; Sunstone Faculty</span></footer>
+
+<script src="app.js"></script>
+<script>
+renderNavbar();
+
+(async () => {
+  const params = new URLSearchParams(window.location.search);
+  const courseId = params.get("id");
+  const user = session.get();
+
+  let course, enrollment = null;
+  try {
+    course = await api.getCourse(courseId);
+  } catch (err) {
+    document.querySelector(".course-layout").innerHTML = `<p>Course not found.</p>`;
+    return;
+  }
+
+  document.getElementById("courseCategory").textContent = course.category;
+  document.getElementById("courseTitle").textContent = course.title;
+  document.getElementById("courseInstructor").innerHTML =
+    `by <a href="profile.html?email=${encodeURIComponent(course.instructorEmail||'')}" style="color:var(--cyan);">${course.instructor}</a>`;
+  document.getElementById("courseDesc").textContent = course.description;
+  document.getElementById("priceLabel").textContent = course.price === 0 ? "Free" : money(course.price);
+
+  if (user) {
+    const mine = await api.getEnrollmentsForUser(user.email);
+    enrollment = mine.find(e => e.courseId === course._id) || null;
+  }
+
+  let watched = enrollment ? Math.round((enrollment.progress / 100) * course.chapters.length) : 0;
+  let activeChapter = 0;
+
+  function renderChapters() {
+    document.getElementById("chapterList").innerHTML = course.chapters.map((ch, i) => `
+      <div class="chapter-item ${i < watched ? 'done' : ''} ${i === activeChapter ? 'active' : ''}" data-i="${i}">
+        <span>${i+1}. ${ch.title}</span>
+      </div>
+    `).join("");
+    document.querySelectorAll(".chapter-item").forEach(el => {
+      el.addEventListener("click", () => selectChapter(parseInt(el.dataset.i)));
+    });
+  }
+
+  function selectChapter(i) {
+    activeChapter = i;
+    renderChapters();
+    const ch = course.chapters[i];
+    const videoBox = document.getElementById("videoBox");
+    if (ch.videoUrl) {
+      videoBox.innerHTML = `<video controls src="${ch.videoUrl}"></video>`;
+      const videoEl = videoBox.querySelector("video");
+      videoEl.addEventListener("ended", () => markWatched(i));
+    } else {
+      videoBox.innerHTML = `
+        <div class="play" id="playBtn">▶</div>
+        <span style="font-family:var(--mono);font-size:0.85rem;color:var(--muted);">No video uploaded for this chapter yet</span>`;
+      document.getElementById("playBtn").addEventListener("click", () => markWatched(i));
+    }
+  }
+
+  async function markWatched(i) {
+    if (!enrollment) { alert("Please enroll in this course first."); return; }
+    if (i >= watched) {
+      watched = i + 1;
+      renderChapters();
+      await updateProgress();
+    }
+  }
+
+  function refreshEnrollUI() {
+    document.getElementById("enrollBtn").style.display = enrollment ? "none" : "block";
+    document.getElementById("enrolledNote").style.display = enrollment ? "block" : "none";
+    document.getElementById("progressCard").style.display = enrollment ? "block" : "none";
+  }
+  refreshEnrollUI();
+
+  async function updateProgress() {
+    const pct = Math.round((watched / course.chapters.length) * 100);
+    document.getElementById("progressFill").style.width = pct + "%";
+    document.getElementById("progressLabel").textContent = pct + "% complete";
+    if (enrollment) {
+      // The certificate is unlocked purely by finishing all chapters —
+      // the quiz (if the instructor added one) is for practice only and
+      // never blocks or requires anything for certification.
+      const patch = { progress: pct, completed: pct === 100 };
+      enrollment = await api.updateEnrollment(enrollment._id, patch);
+      if (enrollment.completed) showCertBanner();
+    }
+  }
+
+  if (course.quiz.length === 0) {
+    document.getElementById("quizSection").style.display = "none";
+  } else {
+    const note = document.createElement("p");
+    note.style.cssText = "font-size:0.8rem;color:var(--muted-dim);font-family:var(--mono);";
+    note.textContent = "// this quiz is just for practice — it doesn't affect your certificate";
+    document.getElementById("quizSection").insertBefore(note, document.getElementById("quizQuestions"));
+  }
+
+  renderChapters();
+  if (enrollment) {
+    updateProgress();
+    if (enrollment.completed) showCertBanner();
+  }
+
+  document.getElementById("playBtn").addEventListener("click", () => selectChapter(0));
+
+  document.getElementById("enrollBtn").addEventListener("click", async () => {
+    if (!user) { window.location.href = "login.html"; return; }
+    if (user.role !== "student") { alert("Only student accounts can enroll in courses."); return; }
+    const confirmMsg = course.price === 0
+      ? `Enroll in "${course.title}" for free?`
+      : `Confirm payment of ${money(course.price)} to enroll in "${course.title}"? (simulated payment)`;
+    if (!confirm(confirmMsg)) return;
+    try {
+      enrollment = await api.enroll(user.email, course._id);
+      refreshEnrollUI();
+    } catch (err) {
+      alert(err.message);
+    }
+  });
+
+  // ---- Quiz (practice only — does not affect the certificate) ----
+  document.getElementById("quizQuestions").innerHTML = course.quiz.map((q, qi) => `
+    <div class="quiz-question">
+      <p style="font-weight:600;">${qi+1}. ${q.q}</p>
+      ${q.options.map((opt, oi) => `
+        <label class="quiz-option">
+          <input type="radio" name="q${qi}" value="${oi}"> ${opt}
+        </label>
+      `).join("")}
+    </div>
+  `).join("");
+
+  document.getElementById("submitQuiz").addEventListener("click", async () => {
+    if (!user) { window.location.href = "login.html"; return; }
+    if (!enrollment) { alert("Please enroll in this course first."); return; }
+
+    let score = 0;
+    course.quiz.forEach((q, qi) => {
+      const picked = document.querySelector(`input[name="q${qi}"]:checked`);
+      if (picked && parseInt(picked.value) === q.answer) score++;
+    });
+    const pct = Math.round((score / course.quiz.length) * 100);
+    const passed = pct >= 60;
+
+    const resultEl = document.getElementById("quizResult");
+    resultEl.className = "quiz-result " + (passed ? "pass" : "fail");
+    resultEl.textContent = `You scored ${score}/${course.quiz.length} (${pct}%) — ${passed ? "Nice work!" : "Not quite — try again anytime, no pressure."}`;
+
+    // Informational only — does NOT affect the certificate.
+    await api.updateEnrollment(enrollment._id, { quizPassed: passed, quizScore: pct });
+  });
+
+  function showCertBanner() {
+    document.getElementById("certBanner").style.display = "block";
+  }
+
+  document.getElementById("downloadCertBtn").addEventListener("click", () => {
+    const canvas = document.getElementById("certCanvas");
+    const ctx = canvas.getContext("2d");
+    ctx.fillStyle = "#0a0d14";
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.strokeStyle = "#ffb627";
+    ctx.lineWidth = 10;
+    ctx.strokeRect(20, 20, canvas.width - 40, canvas.height - 40);
+    ctx.strokeStyle = "#5ce1e6";
+    ctx.lineWidth = 2;
+    ctx.strokeRect(36, 36, canvas.width - 72, canvas.height - 72);
+
+    ctx.textAlign = "center";
+    ctx.fillStyle = "#e7e9f0";
+    ctx.font = "bold 42px Georgia";
+    ctx.fillText("Certificate of Completion", canvas.width/2, 160);
+
+    ctx.font = "20px Georgia";
+    ctx.fillStyle = "#8892a6";
+    ctx.fillText("This certifies that", canvas.width/2, 240);
+
+    ctx.font = "bold 36px Georgia";
+    ctx.fillStyle = "#ffb627";
+    ctx.fillText(user.name, canvas.width/2, 300);
+
+    ctx.font = "20px Georgia";
+    ctx.fillStyle = "#8892a6";
+    ctx.fillText("has successfully completed the course", canvas.width/2, 350);
+
+    ctx.font = "bold 28px Georgia";
+    ctx.fillStyle = "#5ce1e6";
+    ctx.fillText(course.title, canvas.width/2, 400);
+
+    ctx.font = "16px Georgia";
+    ctx.fillStyle = "#5b6478";
+    ctx.fillText("Issued by CourseHub  ·  " + new Date().toLocaleDateString(), canvas.width/2, 460);
+
+    const link = document.createElement("a");
+    link.download = "Certificate_" + course.title.replace(/\s+/g,"_") + ".png";
+    link.href = canvas.toDataURL("image/png");
+    link.click();
+  });
+})();
+</script>
+</body>
+</html>

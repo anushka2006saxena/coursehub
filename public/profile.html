@@ -1,0 +1,109 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Profile — CourseHub</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700;800&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<div id="navbar" class="navbar"></div>
+
+<div class="container section" id="profileContent">
+  <p style="color:var(--muted);font-family:var(--mono);">// loading profile...</p>
+</div>
+
+<footer>CourseHub — B.Tech Project · Assam downtown University<br><span style="font-size:0.72rem;opacity:0.7;">Under the guidance of Mr. Ravi &amp; Sunstone Faculty</span></footer>
+
+<script src="app.js"></script>
+<script>
+renderNavbar();
+
+(async () => {
+  const email = new URLSearchParams(window.location.search).get("email");
+  const container = document.getElementById("profileContent");
+  const currentUser = session.get();
+
+  if (!email) {
+    container.innerHTML = `<div class="empty-state">No profile specified.</div>`;
+    return;
+  }
+
+  let profile;
+  try {
+    profile = await api.getProfile(email);
+  } catch (err) {
+    container.innerHTML = `<div class="empty-state">This profile doesn't exist.</div>`;
+    return;
+  }
+
+  const initials = profile.name.split(" ").map(w => w[0]).slice(0, 2).join("").toUpperCase();
+  const isOwnProfile = currentUser && currentUser.email === profile.email;
+  const memberSince = new Date(profile.memberSince).toLocaleDateString(undefined, { year: "numeric", month: "long" });
+
+  const statsHtml = profile.role === "student"
+    ? `
+      <div class="stat-card"><div class="num">${profile.stats.coursesEnrolled}</div><div class="label">Courses Enrolled</div></div>
+      <div class="stat-card"><div class="num">${profile.stats.certificatesEarned}</div><div class="label">Certificates Earned</div></div>
+    `
+    : profile.role === "instructor"
+    ? `
+      <div class="stat-card"><div class="num">${profile.stats.coursesPublished}</div><div class="label">Courses Published</div></div>
+      <div class="stat-card"><div class="num">${profile.stats.totalStudentsTaught}</div><div class="label">Students Taught</div></div>
+      <div class="stat-card"><div class="num">${profile.stats.assignmentsPosted}</div><div class="label">Assignments Posted</div></div>
+    `
+    : "";
+
+  container.innerHTML = `
+    <div class="profile-header">
+      <div class="profile-avatar">${initials}</div>
+      <div>
+        <h1 style="margin-bottom:4px;">${profile.name}</h1>
+        <span class="role-badge ${profile.role}">${profile.role}</span>
+        <p style="color:var(--muted);font-size:0.85rem;margin:6px 0 0;font-family:var(--mono);">Member since ${memberSince}</p>
+      </div>
+    </div>
+
+    <div class="stat-row">${statsHtml}</div>
+
+    <div class="sidebar-card" style="max-width:600px;">
+      <label>Bio</label>
+      <p id="bioText" style="color:var(--text);">${profile.bio || `<span style="color:var(--muted);">No bio yet.</span>`}</p>
+      ${isOwnProfile ? `
+        <textarea id="bioInput" rows="3" style="display:none;margin-top:8px;" maxlength="300">${profile.bio || ""}</textarea>
+        <button class="btn btn-outline btn-small" id="editBioBtn" style="margin-top:8px;">Edit bio</button>
+        <button class="btn btn-primary btn-small" id="saveBioBtn" style="display:none;margin-top:8px;">Save</button>
+      ` : ""}
+    </div>
+  `;
+
+  if (isOwnProfile) {
+    const bioText = document.getElementById("bioText");
+    const bioInput = document.getElementById("bioInput");
+    const editBtn = document.getElementById("editBioBtn");
+    const saveBtn = document.getElementById("saveBioBtn");
+
+    editBtn.addEventListener("click", () => {
+      bioText.style.display = "none";
+      bioInput.style.display = "block";
+      editBtn.style.display = "none";
+      saveBtn.style.display = "inline-block";
+    });
+
+    saveBtn.addEventListener("click", async () => {
+      const newBio = bioInput.value.trim();
+      await api.updateBio(profile.email, newBio);
+      bioText.innerHTML = newBio || `<span style="color:var(--muted);">No bio yet.</span>`;
+      bioText.style.display = "block";
+      bioInput.style.display = "none";
+      editBtn.style.display = "inline-block";
+      saveBtn.style.display = "none";
+    });
+  }
+})();
+</script>
+</body>
+</html>

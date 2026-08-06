@@ -1,0 +1,248 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>My Dashboard — CourseHub</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700;800&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/codemirror.min.css">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/theme/dracula.min.css">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/addon/lint/lint.min.css">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/codemirror.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/mode/javascript/javascript.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/mode/python/python.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/mode/clike/clike.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/addon/lint/lint.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jshint/2.13.6/jshint.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/addon/lint/javascript-lint.min.js"></script>
+<style>
+  .CodeMirror { height: 220px; border-radius: var(--radius-sm); border: 1px solid var(--border-bright); font-family: var(--mono); font-size: 0.85rem; }
+</style>
+</head>
+<body>
+
+<div id="navbar" class="navbar"></div>
+
+<div class="dash-header">
+  <div class="container">
+    <h1 id="welcome">My Dashboard</h1>
+    <p style="color:var(--muted);margin:0;">Track your courses, progress, certificates and assignments.</p>
+  </div>
+</div>
+
+<div class="container section">
+  <div class="stat-row" id="statRow"></div>
+
+  <h2>My Courses</h2>
+  <div id="myCourses"><p style="color:var(--muted);">Loading…</p></div>
+
+  <h2 style="margin-top:34px;">My Assignments</h2>
+  <div id="myAssignments"><p style="color:var(--muted);">Loading…</p></div>
+
+  <div id="submitForm" style="display:none;margin-top:24px;" class="form-card" style="max-width:640px;">
+    <h3 id="submitFormTitle">Submit Assignment</h3>
+    <p id="assignmentDescText" style="font-size:0.88rem;color:var(--muted);"></p>
+
+    <div id="writtenAnswerGroup" class="form-group">
+      <label>Your Answer</label>
+      <textarea id="subContent" rows="4" placeholder="Write your answer here..."></textarea>
+    </div>
+
+    <div id="codeAnswerGroup" style="display:none;">
+      <label>Your Code</label>
+      <div id="codeEditorHolder"></div>
+    </div>
+
+    <div class="form-group" style="margin-top:14px;">
+      <label>Link (optional — GitHub repo, Drive link, etc.)</label>
+      <input id="subLink" placeholder="https://github.com/...">
+    </div>
+    <button class="btn btn-primary btn-block" id="submitAssignmentBtn">Submit</button>
+  </div>
+</div>
+
+<footer>CourseHub — B.Tech Project · Assam downtown University<br><span style="font-size:0.72rem;opacity:0.7;">Under the guidance of Mr. Ravi &amp; Sunstone Faculty</span></footer>
+
+<script src="app.js"></script>
+<script>
+const user = requireRole("student");
+renderNavbar("dash");
+
+let activeAssignmentId = null;
+let activeAssignmentType = "written";
+let codeEditor = null;
+
+async function render() {
+  if (!user) return;
+  document.getElementById("welcome").textContent = "Welcome back, " + user.name;
+
+  const [myEnrollments, allCourses] = await Promise.all([
+    api.getEnrollmentsForUser(user.email),
+    api.getCourses(),
+  ]);
+
+  const completed = myEnrollments.filter(e => e.completed).length;
+  const inProgress = myEnrollments.length - completed;
+
+  document.getElementById("statRow").innerHTML = `
+    <div class="stat-card"><div class="num">${myEnrollments.length}</div><div class="label">Enrolled Courses</div></div>
+    <div class="stat-card"><div class="num">${completed}</div><div class="label">Certificates Earned</div></div>
+    <div class="stat-card"><div class="num">${inProgress}</div><div class="label">In Progress</div></div>
+  `;
+
+  const container = document.getElementById("myCourses");
+  if (myEnrollments.length === 0) {
+    container.innerHTML = `<div class="empty-state">You haven't enrolled in any courses yet. <a href="index.html">Browse courses</a> to get started.</div>`;
+  } else {
+    container.innerHTML = `
+      <table>
+        <thead><tr><th>Course</th><th>Instructor</th><th>Progress</th><th>Status</th><th></th></tr></thead>
+        <tbody>
+          ${myEnrollments.map(e => {
+            const c = allCourses.find(x => x._id === e.courseId);
+            if (!c) return "";
+            return `
+              <tr>
+                <td>${c.title}</td>
+                <td>${c.instructor}</td>
+                <td style="width:160px;">
+                  <div class="progress-bar"><div class="progress-fill" style="width:${e.progress}%"></div></div>
+                  <span style="font-size:0.78rem;color:var(--muted);">${e.progress}%</span>
+                </td>
+                <td>${e.completed ? "🎓 Certified" : "In Progress"}</td>
+                <td><a href="course.html?id=${c._id}" class="btn btn-outline btn-small">Continue</a></td>
+              </tr>`;
+          }).join("")}
+        </tbody>
+      </table>
+    `;
+  }
+
+  const assignmentsList = document.getElementById("myAssignments");
+  if (myEnrollments.length === 0) {
+    assignmentsList.innerHTML = `<div class="empty-state">Enroll in a course to see assignments posted by your instructor.</div>`;
+    return;
+  }
+
+  const courseMap = {};
+  allCourses.forEach(c => courseMap[c._id] = c.title);
+
+  const perCourseAssignments = await Promise.all(myEnrollments.map(e => api.getAssignmentsForCourse(e.courseId)));
+  const assignments = perCourseAssignments.flat();
+  const mySubmissions = await api.getMySubmissions(user.email);
+  const submittedIds = new Set(mySubmissions.map(s => s.assignmentId));
+
+  if (assignments.length === 0) {
+    assignmentsList.innerHTML = `<div class="empty-state">No assignments posted yet.</div>`;
+    return;
+  }
+
+  assignmentsList.innerHTML = `
+    <table>
+      <thead><tr><th>Assignment</th><th>Course</th><th>Type</th><th>Due Date</th><th>Status</th><th></th></tr></thead>
+      <tbody>
+        ${assignments.map(a => {
+          const overdue = new Date(a.dueDate) < new Date() && !submittedIds.has(a._id);
+          return `
+            <tr>
+              <td>${a.title}</td>
+              <td>${courseMap[a.courseId] || "—"}</td>
+              <td>${a.type === "coding" ? `💻 ${a.language}` : "📝 Written"}</td>
+              <td>${new Date(a.dueDate).toLocaleDateString()}</td>
+              <td style="color:${submittedIds.has(a._id) ? 'var(--green)' : overdue ? 'var(--red)' : 'var(--muted)'};">
+                ${submittedIds.has(a._id) ? "✓ Submitted" : overdue ? "Overdue" : "Pending"}
+              </td>
+              <td><button class="btn btn-outline btn-small submit-btn"
+                    data-id="${a._id}" data-title="${a.title}" data-type="${a.type}"
+                    data-language="${a.language||''}" data-starter="${encodeURIComponent(a.starterCode||'')}"
+                    data-desc="${encodeURIComponent(a.description||'')}">
+                ${submittedIds.has(a._id) ? "Edit Submission" : "Submit"}
+              </button></td>
+            </tr>`;
+        }).join("")}
+      </tbody>
+    </table>
+  `;
+
+  document.querySelectorAll(".submit-btn").forEach(btn => {
+    btn.addEventListener("click", () => {
+      if (btn.dataset.type === "coding") {
+        window.location.href = `solve-assignment.html?id=${btn.dataset.id}`;
+      } else {
+        openSubmitForm(btn.dataset);
+      }
+    });
+  });
+}
+
+function openSubmitForm(data) {
+  activeAssignmentId = data.id;
+  activeAssignmentType = data.type;
+  document.getElementById("submitFormTitle").textContent = "Submit — " + data.title;
+  document.getElementById("assignmentDescText").textContent = decodeURIComponent(data.desc || "");
+
+  const writtenGroup = document.getElementById("writtenAnswerGroup");
+  const codeGroup = document.getElementById("codeAnswerGroup");
+
+  if (data.type === "coding") {
+    writtenGroup.style.display = "none";
+    codeGroup.style.display = "block";
+    const starter = decodeURIComponent(data.starter || "");
+    const mode = data.language === "python" ? "python" : data.language === "java" ? "text/x-java" : "javascript";
+
+    document.getElementById("codeEditorHolder").innerHTML = "";
+    if (typeof CodeMirror !== "undefined") {
+      codeEditor = CodeMirror(document.getElementById("codeEditorHolder"), {
+        value: starter,
+        mode,
+        theme: "dracula",
+        lineNumbers: true,
+        gutters: mode === "javascript" ? ["CodeMirror-lint-markers"] : [],
+        lint: mode === "javascript",
+      });
+    } else {
+      // Fallback if the CDN is unreachable — a plain textarea keeps the feature usable.
+      document.getElementById("codeEditorHolder").innerHTML =
+        `<textarea id="codeFallback" rows="8" style="width:100%;font-family:var(--mono);background:var(--bg-elevated);color:var(--text);border:1px solid var(--border-bright);border-radius:6px;padding:10px;">${starter}</textarea>`;
+    }
+  } else {
+    writtenGroup.style.display = "block";
+    codeGroup.style.display = "none";
+    document.getElementById("subContent").value = "";
+  }
+
+  document.getElementById("submitForm").style.display = "block";
+  document.getElementById("submitForm").scrollIntoView({ behavior: "smooth" });
+}
+
+document.getElementById("submitAssignmentBtn").addEventListener("click", async () => {
+  let content;
+  if (activeAssignmentType === "coding") {
+    content = codeEditor ? codeEditor.getValue() : (document.getElementById("codeFallback")?.value || "");
+  } else {
+    content = document.getElementById("subContent").value.trim();
+  }
+  const link = document.getElementById("subLink").value.trim();
+
+  if (!content) {
+    alert("Please write something before submitting.");
+    return;
+  }
+
+  try {
+    await api.submitAssignment(activeAssignmentId, { studentEmail: user.email, content, link });
+    document.getElementById("submitForm").style.display = "none";
+    document.getElementById("subLink").value = "";
+    alert("Submitted successfully!");
+    render();
+  } catch (err) {
+    alert(err.message);
+  }
+});
+
+render();
+</script>
+</body>
+</html>

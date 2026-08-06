@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Submissions — CourseHub</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700;800&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css">
+<style>
+  .page-wrap { max-width: 900px; margin: 0 auto; padding: 36px 20px 60px; }
+  .back-link { display:inline-block; margin-bottom:18px; color:var(--muted); font-family:var(--mono); font-size:0.85rem; text-decoration:none; }
+  .back-link:hover { color: var(--text); }
+</style>
+</head>
+<body>
+
+<div id="navbar" class="navbar"></div>
+
+<div class="page-wrap">
+  <a href="instructor-dashboard.html" class="back-link">&larr; Back to Dashboard</a>
+  <h1 id="pageTitle" style="margin-bottom:4px;">Submissions</h1>
+  <p style="color:var(--muted);margin-bottom:24px;" id="pageSub"></p>
+
+  <div id="rosterTable"><p style="color:var(--muted);">Loading…</p></div>
+</div>
+
+<footer>CourseHub — B.Tech Project · Assam downtown University<br><span style="font-size:0.72rem;opacity:0.7;">Under the guidance of Mr. Ravi &amp; Sunstone Faculty</span></footer>
+
+<script src="app.js"></script>
+<script>
+const user = requireRole("instructor");
+renderNavbar("dash");
+
+(async () => {
+  const assignmentId = new URLSearchParams(window.location.search).get("assignment");
+  if (!assignmentId) { document.body.innerHTML = "<p style='padding:30px;'>No assignment specified.</p>"; return; }
+
+  let assignment;
+  try {
+    assignment = await fetch(`/api/assignments/${assignmentId}`).then(r => r.json());
+    if (assignment.error) throw new Error(assignment.error);
+  } catch (err) {
+    document.body.innerHTML = `<p style='padding:30px;'>Assignment not found.</p>`;
+    return;
+  }
+
+  document.getElementById("pageTitle").textContent = "Submissions — " + assignment.title;
+  document.getElementById("pageSub").textContent = assignment.type === "coding"
+    ? `Coding assignment (${assignment.language})${assignment.autoGraded ? " · auto-graded" : ""}`
+    : "Written assignment · reviewed manually";
+
+  const submissions = await api.getSubmissions(assignmentId);
+  const table = document.getElementById("rosterTable");
+
+  if (submissions.length === 0) {
+    table.innerHTML = `<div class="empty-state">No submissions yet.</div>`;
+    return;
+  }
+
+  table.innerHTML = `
+    <table>
+      <thead><tr><th>Student</th><th>Submitted</th><th>Grade</th><th></th></tr></thead>
+      <tbody>
+        ${submissions.map(s => `
+          <tr>
+            <td>${s.studentEmail}</td>
+            <td>${new Date(s.createdAt).toLocaleString()}</td>
+            <td style="color:${s.grade!=null ? 'var(--green)':'var(--muted)'};">${s.grade!=null ? s.grade + "/100" : "Not graded"}</td>
+            <td><a class="btn btn-outline btn-small" style="text-decoration:none;" href="view-submission.html?assignment=${assignmentId}&student=${encodeURIComponent(s.studentEmail)}">View</a></td>
+          </tr>
+        `).join("")}
+      </tbody>
+    </table>
+  `;
+})();
+</script>
+</body>
+</html>

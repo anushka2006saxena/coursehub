@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>CourseHub — Online Course Marketplace</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700;800&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<div id="navbar" class="navbar"></div>
+
+<section class="hero">
+  <div class="container">
+    <div class="editor-window">
+      <div class="editor-titlebar">
+        <div class="editor-dot red"></div>
+        <div class="editor-dot yellow"></div>
+        <div class="editor-dot green"></div>
+        <span class="editor-filename">welcome.js</span>
+      </div>
+      <div class="editor-body">
+        <div class="editor-line"><span class="editor-comment">// build your next skill, one course at a time</span></div>
+        <div class="editor-line"><span class="editor-keyword">const</span> you = <span class="editor-keyword">new</span> Learner();</div>
+        <div class="editor-line">you.<span id="typedAction">enroll</span><span class="editor-cursor"></span></div>
+      </div>
+    </div>
+
+    <div class="hero-copy">
+      <h1>Learn new skills. <span style="color:var(--accent);">Teach what you know.</span></h1>
+      <p>Browse courses from real instructors, watch real video lectures, take quizzes built by your teachers, and earn a certificate — all in one place.</p>
+      <a href="login.html" class="btn btn-primary">Get Started</a>
+    </div>
+  </div>
+</section>
+
+<section class="section container">
+  <div class="section-title">
+    <span></span>
+    <h2 style="margin:0;">Browse Courses</h2>
+  </div>
+  <div class="grid" id="courseGrid"><p style="color:var(--muted);font-family:var(--mono);">// loading courses...</p></div>
+</section>
+
+<footer>CourseHub — B.Tech Project · Assam downtown University<br><span style="font-size:0.72rem;opacity:0.7;">Under the guidance of Mr. Ravi &amp; Sunstone Faculty</span></footer>
+
+<script src="app.js"></script>
+<script>
+  renderNavbar("browse");
+
+  // Signature hero detail: cycle through a couple of verbs in the code line
+  const actions = ["enroll()", "learn()", "build()", "ship()"];
+  let ai = 0;
+  setInterval(() => {
+    ai = (ai + 1) % actions.length;
+    document.getElementById("typedAction").textContent = actions[ai];
+  }, 1800);
+
+  (async () => {
+    const grid = document.getElementById("courseGrid");
+    try {
+      const courses = await api.getCourses();
+      if (courses.length === 0) {
+        grid.innerHTML = `<p style="color:var(--muted);">No courses published yet.</p>`;
+        return;
+      }
+      grid.innerHTML = courses.map(c => `
+        <div class="card">
+          <div class="card-thumb">${c.title.split(" ").map(w=>w[0]).slice(0,2).join("")}</div>
+          <div class="card-body">
+            <span class="tag">${c.category.toLowerCase().replace(/\s+/g,"-")}</span>
+            <h3>${c.title}</h3>
+            <p>${c.description}</p>
+            <p class="by-line">by <a href="profile.html?email=${encodeURIComponent(c.instructorEmail||'')}">${c.instructor}</a></p>
+            <div class="price-row">
+              <span class="price">${c.price === 0 ? '<span style="color:var(--green);">Free</span>' : money(c.price)}</span>
+              <a href="course.html?id=${c._id}" class="btn btn-outline btn-small">View Course</a>
+            </div>
+          </div>
+        </div>
+      `).join("");
+    } catch (err) {
+      grid.innerHTML = `<p style="color:var(--red);">Couldn't load courses: ${err.message}. Is the server running?</p>`;
+    }
+  })();
+</script>
+</body>
+</html>

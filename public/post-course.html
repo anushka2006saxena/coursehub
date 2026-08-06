@@ -1,0 +1,177 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Create Course — CourseHub</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700;800&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css">
+<style>
+  .page-wrap { max-width: 680px; margin: 0 auto; padding: 36px 20px 60px; }
+  .back-link { display:inline-block; margin-bottom:18px; color:var(--muted); font-family:var(--mono); font-size:0.85rem; text-decoration:none; }
+  .back-link:hover { color: var(--text); }
+</style>
+</head>
+<body>
+
+<div id="navbar" class="navbar"></div>
+
+<div class="page-wrap">
+  <a href="instructor-dashboard.html" class="back-link">&larr; Back to Dashboard</a>
+  <h1 style="margin-bottom:4px;">Create a New Course</h1>
+  <p style="color:var(--muted);margin-bottom:24px;">This opens as its own page so you don't lose your place on the dashboard.</p>
+
+  <div id="newCourseForm" class="form-card">
+    <div class="form-group"><label>Title</label><input id="ncTitle" placeholder="e.g. Intro to Cloud Computing"></div>
+    <div class="form-group"><label>Category</label><input id="ncCategory" placeholder="e.g. Cloud Computing"></div>
+
+    <div class="form-group">
+      <label style="display:flex;align-items:center;gap:8px;font-family:var(--sans);">
+        <input type="checkbox" id="ncFree" style="width:auto;"> Make this course free
+      </label>
+    </div>
+    <div class="form-group" id="priceGroup"><label>Price (₹)</label><input id="ncPrice" type="number" placeholder="799"></div>
+    <div class="form-group"><label>Description</label><textarea id="ncDesc" rows="3" placeholder="What will students learn?"></textarea></div>
+
+    <label style="margin-top:20px;">Chapters</label>
+    <div id="chapterBuilder"></div>
+    <button type="button" class="builder-add-btn" id="addChapterBtn">+ Add Chapter</button>
+
+    <label>Quiz Questions <span style="color:var(--muted-dim);font-weight:400;text-transform:none;">(optional)</span></label>
+    <div id="quizBuilder"></div>
+    <button type="button" class="builder-add-btn" id="addQuestionBtn">+ Add Question</button>
+
+    <div id="publishStatus" style="font-size:0.85rem;color:var(--muted);margin-bottom:10px;"></div>
+    <button class="btn btn-primary btn-block" id="saveCourseBtn">Publish Course</button>
+  </div>
+</div>
+
+<footer>CourseHub — B.Tech Project · Assam downtown University<br><span style="font-size:0.72rem;opacity:0.7;">Under the guidance of Mr. Ravi &amp; Sunstone Faculty</span></footer>
+
+<script src="app.js"></script>
+<script>
+const user = requireRole("instructor");
+renderNavbar("dash");
+
+let chapterCount = 0;
+let questionCount = 0;
+
+function addChapterRow(title = "", videoUrl = "") {
+  const id = chapterCount++;
+  const row = document.createElement("div");
+  row.className = "builder-block";
+  row.dataset.chapterId = id;
+  row.innerHTML = `
+    <button type="button" class="remove-btn" onclick="this.parentElement.remove()">✕ remove</button>
+    <div class="form-group"><label>Chapter Title</label><input class="ch-title" placeholder="e.g. Introduction" value="${title}"></div>
+    <div class="form-group"><label>Video (optional)</label><input class="ch-video" type="file" accept="video/*"></div>
+    <p class="ch-video-status" style="font-size:0.78rem;color:var(--muted);margin:0;">${videoUrl ? "Video attached" : "No video — students will just see the chapter title"}</p>
+  `;
+  document.getElementById("chapterBuilder").appendChild(row);
+}
+
+function addQuestionRow() {
+  const id = questionCount++;
+  const row = document.createElement("div");
+  row.className = "builder-block";
+  row.dataset.questionId = id;
+  row.innerHTML = `
+    <button type="button" class="remove-btn" onclick="this.parentElement.remove()">✕ remove</button>
+    <div class="form-group"><label>Question</label><input class="q-text" placeholder="e.g. What does HTML stand for?"></div>
+    <div class="form-group"><label>Options (mark the correct one)</label>
+      ${[0,1,2,3].map(i => `
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;">
+          <input type="radio" name="correct-${id}" value="${i}" ${i===0?'checked':''}>
+          <input class="q-opt" placeholder="Option ${i+1}" style="flex:1;">
+        </div>
+      `).join("")}
+    </div>
+  `;
+  document.getElementById("quizBuilder").appendChild(row);
+}
+
+document.getElementById("addChapterBtn").addEventListener("click", () => addChapterRow());
+document.getElementById("addQuestionBtn").addEventListener("click", () => addQuestionRow());
+addChapterRow();
+
+document.getElementById("ncFree").addEventListener("change", (e) => {
+  const priceGroup = document.getElementById("priceGroup");
+  const priceInput = document.getElementById("ncPrice");
+  if (e.target.checked) {
+    priceInput.value = 0;
+    priceInput.disabled = true;
+    priceGroup.style.opacity = "0.5";
+  } else {
+    priceInput.disabled = false;
+    priceInput.value = "";
+    priceGroup.style.opacity = "1";
+  }
+});
+
+document.getElementById("saveCourseBtn").addEventListener("click", async () => {
+  const title = document.getElementById("ncTitle").value.trim();
+  const category = document.getElementById("ncCategory").value.trim();
+  const isFree = document.getElementById("ncFree").checked;
+  const rawPrice = document.getElementById("ncPrice").value;
+  const price = isFree ? 0 : (rawPrice === "" ? NaN : parseInt(rawPrice));
+  const description = document.getElementById("ncDesc").value.trim();
+  const statusEl = document.getElementById("publishStatus");
+
+  if (!title || !category || Number.isNaN(price) || !description) {
+    alert("Please fill in the course title, category, price (or check 'free'), and description.");
+    return;
+  }
+
+  const chapterRows = [...document.querySelectorAll("#chapterBuilder .builder-block")];
+  if (chapterRows.length === 0) {
+    alert("Add at least one chapter.");
+    return;
+  }
+  const questionRows = [...document.querySelectorAll("#quizBuilder .builder-block")];
+
+  const saveBtn = document.getElementById("saveCourseBtn");
+  saveBtn.disabled = true;
+
+  try {
+    const chapters = [];
+    for (let i = 0; i < chapterRows.length; i++) {
+      const row = chapterRows[i];
+      const chTitle = row.querySelector(".ch-title").value.trim();
+      if (!chTitle) throw new Error(`Chapter ${i+1} needs a title.`);
+      const fileInput = row.querySelector(".ch-video");
+      let videoUrl = "";
+      if (fileInput.files && fileInput.files[0]) {
+        statusEl.textContent = `Uploading video for "${chTitle}"...`;
+        const result = await api.uploadVideo(fileInput.files[0]);
+        videoUrl = result.url;
+      }
+      chapters.push({ title: chTitle, videoUrl });
+    }
+
+    // Quiz is optional — only rows that are fully filled in get included
+    const quiz = [];
+    for (let i = 0; i < questionRows.length; i++) {
+      const row = questionRows[i];
+      const qText = row.querySelector(".q-text").value.trim();
+      const opts = [...row.querySelectorAll(".q-opt")].map(inp => inp.value.trim());
+      if (!qText && opts.every(o => !o)) continue; // fully empty row, skip silently
+      if (!qText || opts.some(o => !o)) throw new Error(`Question ${i+1} is incomplete — fill in the question and all 4 options, or remove it.`);
+      const correctRadio = row.querySelector(`input[name="correct-${row.dataset.questionId}"]:checked`);
+      quiz.push({ q: qText, options: opts, answer: parseInt(correctRadio.value) });
+    }
+
+    statusEl.textContent = "Publishing course...";
+    await api.createCourse({ title, category, price, description, instructor: user.name, instructorEmail: user.email, chapters, quiz });
+
+    window.location.href = "instructor-dashboard.html?created=1";
+  } catch (err) {
+    alert(err.message);
+    statusEl.textContent = "";
+  } finally {
+    saveBtn.disabled = false;
+  }
+});
+</script>
+</body>
+</html>

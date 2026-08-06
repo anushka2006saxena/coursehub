@@ -1,0 +1,26 @@
+{
+  "name": "coursehub-fullstack",
+  "version": "1.0.0",
+  "description": "Online Course Marketplace — full-stack (Node.js, Express, MongoDB)",
+  "main": "server.js",
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "scripts": {
+    "start": "node server.js",
+    "seed": "node seed.js"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "bcryptjs": "^3.0.3",
+    "cors": "^2.8.6",
+    "cloudinary": "^2.10.0",
+    "dotenv": "^17.4.2",
+    "express": "^5.2.1",
+    "mongoose": "^9.7.4",
+    "multer": "^2.2.0",
+    "nodemailer": "^9.0.3"
+  }
+}

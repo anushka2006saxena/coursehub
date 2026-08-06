@@ -1,0 +1,260 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Post Assignment — CourseHub</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700;800&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/codemirror.min.css">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/theme/dracula.min.css">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/codemirror.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/mode/javascript/javascript.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/mode/python/python.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/mode/clike/clike.min.js"></script>
+<style>
+  .CodeMirror { height: auto; min-height: 140px; border-radius: var(--radius-sm); border: 1px solid var(--border-bright); font-family: var(--mono); font-size: 0.85rem; }
+  .page-wrap { max-width: 720px; margin: 0 auto; padding: 36px 20px 60px; }
+  .back-link { display:inline-block; margin-bottom:18px; color:var(--muted); font-family:var(--mono); font-size:0.85rem; text-decoration:none; }
+  .back-link:hover { color: var(--text); }
+</style>
+</head>
+<body>
+
+<div id="navbar" class="navbar"></div>
+
+<div class="page-wrap">
+  <a href="instructor-dashboard.html" class="back-link">&larr; Back to Dashboard</a>
+  <h1 style="margin-bottom:4px;">Post a New Assignment</h1>
+  <p style="color:var(--muted);margin-bottom:24px;">This opens as its own page so you don't lose your place on the dashboard.</p>
+
+  <div id="noCourseNotice" style="display:none;" class="empty-state">
+    You haven't published any courses yet. <a href="instructor-dashboard.html">Create a course first</a>, then come back here.
+  </div>
+
+  <div id="assignmentForm" class="form-card">
+    <div class="form-group">
+      <label>Course</label>
+      <select id="asCourse"></select>
+    </div>
+    <div class="form-group"><label>Title</label><input id="asTitle" placeholder="e.g. Two Sum"></div>
+    <div class="form-group"><label>Description</label><textarea id="asDesc" rows="3" placeholder="What should students submit, and any requirements?"></textarea></div>
+    <div class="form-group"><label>Due Date</label><input id="asDue" type="date"></div>
+
+    <div class="role-toggle">
+      <button type="button" id="typeWritten" class="active">Written Answer</button>
+      <button type="button" id="typeCoding">Coding Problem</button>
+    </div>
+
+    <div id="codingFields" style="display:none;">
+      <div class="form-group">
+        <label>Language</label>
+        <select id="asLanguage">
+          <option value="javascript">JavaScript</option>
+          <option value="python">Python</option>
+          <option value="java">Java</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label>Starter Code (shown to students)</label>
+        <textarea id="asStarterCode" rows="4" style="font-family:var(--mono);" placeholder="function twoSum(nums, target) {&#10;  // your code here&#10;}"></textarea>
+      </div>
+
+      <div id="autoGradeFields" style="display:none;">
+        <div class="sidebar-card" style="background:var(--bg-elevated);margin-bottom:16px;">
+          <p style="font-size:0.82rem;color:var(--muted);margin-bottom:12px;" id="autoGradeExplainer">
+            <strong style="color:var(--cyan);">Auto-grading:</strong> give your own correct solution, plus a few
+            test inputs — students' code gets checked against these automatically (really compiled and run,
+            for every language), and wrong answers can't be submitted.
+          </p>
+
+          <div class="form-group" id="functionNameGroup"><label>Function Name</label><input id="asFunctionName" placeholder="e.g. twoSum"></div>
+
+          <div class="form-group">
+            <label>Your Reference Solution</label>
+            <p id="stdioHint" style="display:none;font-size:0.78rem;color:var(--muted);margin-top:-4px;margin-bottom:8px;">
+              For Python/Java, write a full program that reads input from stdin and prints the answer with
+              print / System.out.println — same as what students will submit. Java: class name must be <code>Main</code>.
+            </p>
+            <div id="refSolutionHolder"></div>
+          </div>
+
+          <label id="testCaseLabel">Test Cases</label>
+          <p id="testCaseHintJs" style="font-size:0.78rem;color:var(--muted);margin-top:-6px;">One entry per function parameter, as a JSON array.</p>
+          <p id="testCaseHintStdio" style="display:none;font-size:0.78rem;color:var(--muted);margin-top:-6px;">The exact text your program should receive on stdin for this test case.</p>
+          <div id="testCaseBuilder"></div>
+          <button type="button" class="builder-add-btn" id="addTestCaseBtn">+ Add Test Case</button>
+        </div>
+      </div>
+    </div>
+
+    <div id="postStatus" style="font-size:0.85rem;color:var(--muted);margin-bottom:10px;"></div>
+    <button class="btn btn-primary btn-block" id="saveAssignmentBtn">Post Assignment</button>
+  </div>
+</div>
+
+<footer>CourseHub — B.Tech Project · Assam downtown University<br><span style="font-size:0.72rem;opacity:0.7;">Under the guidance of Mr. Ravi &amp; Sunstone Faculty</span></footer>
+
+<script src="app.js"></script>
+<script>
+const user = requireRole("instructor");
+renderNavbar("dash");
+
+let myCourses = [];
+let assignmentType = "written";
+let refSolutionEditor = null;
+let testCaseCount = 0;
+
+document.getElementById("typeWritten").addEventListener("click", () => {
+  assignmentType = "written";
+  document.getElementById("typeWritten").classList.add("active");
+  document.getElementById("typeCoding").classList.remove("active");
+  document.getElementById("codingFields").style.display = "none";
+});
+document.getElementById("typeCoding").addEventListener("click", () => {
+  assignmentType = "coding";
+  document.getElementById("typeCoding").classList.add("active");
+  document.getElementById("typeWritten").classList.remove("active");
+  document.getElementById("codingFields").style.display = "block";
+  updateAutoGradeVisibility();
+});
+
+function currentLang() {
+  return document.getElementById("asLanguage").value;
+}
+
+function updateAutoGradeVisibility() {
+  const lang = currentLang();
+  const isJs = lang === "javascript";
+  document.getElementById("autoGradeFields").style.display = "block"; // all 3 languages can now auto-grade
+  document.getElementById("functionNameGroup").style.display = isJs ? "block" : "none";
+  document.getElementById("stdioHint").style.display = isJs ? "none" : "block";
+  document.getElementById("testCaseHintJs").style.display = isJs ? "block" : "none";
+  document.getElementById("testCaseHintStdio").style.display = isJs ? "none" : "block";
+
+  const cmMode = lang === "python" ? "python" : lang === "java" ? "text/x-java" : "javascript";
+  const defaultRefSolution = isJs
+    ? "function twoSum(nums, target) {\n  // your correct solution here\n}"
+    : lang === "python"
+      ? "# read input, compute the answer, print it\nline = input()\nprint(line)"
+      : "import java.util.Scanner;\n\npublic class Main {\n  public static void main(String[] args) {\n    Scanner sc = new Scanner(System.in);\n    String line = sc.nextLine();\n    System.out.println(line);\n  }\n}";
+
+  const holder = document.getElementById("refSolutionHolder");
+  if (!refSolutionEditor) {
+    if (typeof CodeMirror !== "undefined") {
+      refSolutionEditor = CodeMirror(holder, { value: defaultRefSolution, mode: cmMode, theme: "dracula", lineNumbers: true });
+    } else {
+      holder.innerHTML = `<textarea id="refSolutionFallback" rows="6" style="width:100%;font-family:var(--mono);background:var(--bg-elevated);color:var(--text);border:1px solid var(--border-bright);border-radius:6px;padding:10px;">${defaultRefSolution}</textarea>`;
+    }
+  } else {
+    refSolutionEditor.setOption("mode", cmMode);
+  }
+
+  if (testCaseCount === 0) addTestCaseRow();
+}
+
+document.getElementById("asLanguage").addEventListener("change", updateAutoGradeVisibility);
+
+function addTestCaseRow() {
+  const id = testCaseCount++;
+  const isJs = currentLang() === "javascript";
+  const row = document.createElement("div");
+  row.className = "builder-block";
+  row.dataset.testcaseId = id;
+  row.innerHTML = `
+    <button type="button" class="remove-btn" onclick="this.parentElement.remove()">✕ remove</button>
+    <div class="form-group">
+      <label>${isJs ? "Arguments (as a JSON array — one entry per function parameter)" : "Standard input for this test case"}</label>
+      ${isJs
+        ? `<input class="tc-input" style="font-family:var(--mono);" placeholder='e.g. [[2,7,11,15], 9]'>`
+        : `<textarea class="tc-input" rows="2" style="font-family:var(--mono);" placeholder="e.g. 5\n1 2 3 4 5"></textarea>`}
+    </div>
+  `;
+  document.getElementById("testCaseBuilder").appendChild(row);
+}
+document.getElementById("addTestCaseBtn").addEventListener("click", addTestCaseRow);
+
+document.getElementById("saveAssignmentBtn").addEventListener("click", async () => {
+  const courseId = document.getElementById("asCourse").value;
+  const title = document.getElementById("asTitle").value.trim();
+  const description = document.getElementById("asDesc").value.trim();
+  const dueDate = document.getElementById("asDue").value;
+
+  if (!courseId || !title || !description || !dueDate) {
+    alert("Please fill in all fields.");
+    return;
+  }
+
+  const payload = { title, description, courseId, instructorEmail: user.email, dueDate, type: assignmentType };
+  if (assignmentType === "coding") {
+    const lang = currentLang();
+    payload.language = lang;
+    payload.starterCode = document.getElementById("asStarterCode").value;
+
+    const referenceSolution = refSolutionEditor
+      ? refSolutionEditor.getValue()
+      : (document.getElementById("refSolutionFallback")?.value || "");
+    const tcRows = [...document.querySelectorAll("#testCaseBuilder .builder-block")];
+
+    if (lang === "javascript") {
+      const functionName = document.getElementById("asFunctionName").value.trim();
+      if (functionName && referenceSolution && tcRows.length > 0) {
+        let testCaseInputs;
+        try {
+          testCaseInputs = tcRows.map(row => {
+            const raw = row.querySelector(".tc-input").value.trim();
+            if (!raw) throw new Error("empty");
+            return JSON.parse(raw);
+          });
+        } catch (e) {
+          alert('Each test case must be valid JSON, e.g. [[2,7,11,15], 9] — check your test case inputs.');
+          return;
+        }
+        payload.functionName = functionName;
+        payload.referenceSolution = referenceSolution;
+        payload.testCaseInputs = testCaseInputs;
+      }
+    } else {
+      // python / java: stdio-style — each test case is just raw stdin text
+      if (referenceSolution && tcRows.length > 0) {
+        const testCaseInputs = tcRows.map(row => row.querySelector(".tc-input").value);
+        if (testCaseInputs.some(v => !v.trim())) {
+          alert("Fill in stdin text for every test case, or remove empty ones.");
+          return;
+        }
+        payload.referenceSolution = referenceSolution;
+        payload.testCaseInputs = testCaseInputs;
+      }
+    }
+  }
+
+  const saveBtn = document.getElementById("saveAssignmentBtn");
+  const statusEl = document.getElementById("postStatus");
+  saveBtn.disabled = true;
+  statusEl.textContent = assignmentType === "coding" && payload.testCaseInputs
+    ? "Running your reference solution against the test cases…"
+    : "Posting…";
+  try {
+    await api.createAssignment(payload);
+    window.location.href = "instructor-dashboard.html?posted=1";
+  } catch (err) {
+    alert(err.message);
+    statusEl.textContent = "";
+  } finally {
+    saveBtn.disabled = false;
+  }
+});
+
+(async () => {
+  myCourses = await api.getInstructorCourses(user.email);
+  if (myCourses.length === 0) {
+    document.getElementById("noCourseNotice").style.display = "block";
+    document.getElementById("assignmentForm").style.display = "none";
+    return;
+  }
+  document.getElementById("asCourse").innerHTML = myCourses.map(c => `<option value="${c._id}">${c.title}</option>`).join("");
+})();
+</script>
+</body>
+</html>

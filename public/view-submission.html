@@ -1,0 +1,134 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Submission — CourseHub</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700;800&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/codemirror.min.css">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/theme/dracula.min.css">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/codemirror.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/mode/javascript/javascript.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/mode/python/python.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/mode/clike/clike.min.js"></script>
+<style>
+  .page-wrap { max-width: 820px; margin: 0 auto; padding: 36px 20px 60px; }
+  .back-link { display:inline-block; margin-bottom:18px; color:var(--muted); font-family:var(--mono); font-size:0.85rem; text-decoration:none; }
+  .back-link:hover { color: var(--text); }
+  /* The overflow bug: without a max-width + wordwrap, long lines got clipped instead of scrolling or wrapping. */
+  .CodeMirror { max-width: 100%; height: auto; max-height: 480px; border-radius: var(--radius-sm); border: 1px solid var(--border-bright); font-family: var(--mono); font-size: 0.85rem; }
+  .test-case-row { padding: 10px 12px; border-radius: 6px; margin-bottom: 8px; border: 1px solid var(--border-bright); font-family: var(--mono); font-size: 0.82rem; white-space: pre-wrap; word-break: break-word; }
+  .test-case-row.pass { border-color: var(--green); background: var(--green-dim); }
+  .test-case-row.fail { border-color: var(--red); background: var(--red-dim); }
+</style>
+</head>
+<body>
+
+<div id="navbar" class="navbar"></div>
+
+<div class="page-wrap">
+  <a id="backLink" href="instructor-dashboard.html" class="back-link">&larr; Back to Submissions</a>
+  <h1 id="pageTitle" style="margin-bottom:4px;word-break:break-word;">Submission</h1>
+  <p style="color:var(--muted);margin-bottom:24px;" id="pageSub"></p>
+
+  <div id="content"><p style="color:var(--muted);">Loading…</p></div>
+</div>
+
+<footer>CourseHub — B.Tech Project · Assam downtown University<br><span style="font-size:0.72rem;opacity:0.7;">Under the guidance of Mr. Ravi &amp; Sunstone Faculty</span></footer>
+
+<script src="app.js"></script>
+<script>
+const user = requireRole("instructor");
+renderNavbar("dash");
+
+(async () => {
+  const params = new URLSearchParams(window.location.search);
+  const assignmentId = params.get("assignment");
+  const studentEmail = params.get("student");
+  if (!assignmentId || !studentEmail) { document.body.innerHTML = "<p style='padding:30px;'>Missing assignment or student.</p>"; return; }
+
+  document.getElementById("backLink").href = `submissions.html?assignment=${assignmentId}`;
+
+  let assignment, submission;
+  try {
+    assignment = await fetch(`/api/assignments/${assignmentId}`).then(r => r.json());
+    if (assignment.error) throw new Error(assignment.error);
+    const all = await api.getSubmissions(assignmentId);
+    submission = all.find(s => s.studentEmail === studentEmail);
+    if (!submission) throw new Error("Submission not found for this student.");
+  } catch (err) {
+    document.body.innerHTML = `<p style='padding:30px;'>${err.message}</p>`;
+    return;
+  }
+
+  document.getElementById("pageTitle").textContent = studentEmail;
+  document.getElementById("pageSub").textContent = `${assignment.title} · submitted ${new Date(submission.createdAt).toLocaleString()}`;
+
+  const content = document.getElementById("content");
+  content.innerHTML = `
+    <div class="form-card">
+      <label>Submission</label>
+      ${assignment.type === "coding" ? `<div id="codeHolder"></div>` : `<p style="white-space:pre-wrap;">${submission.content.replace(/</g,"&lt;")}</p>`}
+      ${submission.link ? `<p style="margin-top:10px;font-size:0.85rem;"><a href="${submission.link}" target="_blank">${submission.link}</a></p>` : ""}
+    </div>
+
+    ${assignment.autoGraded && submission.testResults && submission.testResults.length
+      ? `<div class="form-card" style="margin-top:20px;">
+           <label>Test Results</label>
+           ${submission.testResults.map((r, i) => `
+             <div class="test-case-row ${r.passed ? 'pass' : 'fail'}">Test ${i+1}: ${r.passed ? '✓ Passed' : '✗ Failed'}${r.error ? ' — ' + String(r.error).replace(/</g,"&lt;") : ''}</div>
+           `).join("")}
+         </div>`
+      : ""}
+
+    <div class="form-card" style="margin-top:20px;">
+      <label>Grade</label>
+      <div class="form-group"><input id="gradeInput" type="number" min="0" max="100" placeholder="e.g. 85" value="${submission.grade ?? ''}"></div>
+      <label>Feedback</label>
+      <div class="form-group"><textarea id="feedbackInput" rows="3" placeholder="Optional feedback for the student">${submission.feedback || ''}</textarea></div>
+      <div id="gradeStatus" style="font-size:0.85rem;color:var(--muted);margin-bottom:10px;"></div>
+      <button class="btn btn-primary btn-block" id="saveGradeBtn">Save Grade</button>
+    </div>
+  `;
+
+  if (assignment.type === "coding") {
+    const holder = document.getElementById("codeHolder");
+    const mode = assignment.language === "python" ? "python" : assignment.language === "java" ? "text/x-java" : "javascript";
+    if (typeof CodeMirror !== "undefined") {
+      CodeMirror(holder, {
+        value: submission.content,
+        mode, theme: "dracula", readOnly: true, lineNumbers: true,
+        lineWrapping: true, // <- fixes the cut-off long lines
+      });
+    } else {
+      holder.innerHTML = `<pre style="background:#0a0d14;color:#e7e9f0;padding:12px;border-radius:6px;overflow-x:auto;white-space:pre-wrap;word-break:break-word;font-family:var(--mono);font-size:0.82rem;">${submission.content.replace(/</g,"&lt;")}</pre>`;
+    }
+  }
+
+  document.getElementById("saveGradeBtn").addEventListener("click", async () => {
+    const gradeVal = document.getElementById("gradeInput").value;
+    const feedback = document.getElementById("feedbackInput").value;
+    const statusEl = document.getElementById("gradeStatus");
+    if (gradeVal !== "" && (Number(gradeVal) < 0 || Number(gradeVal) > 100)) {
+      alert("Grade must be between 0 and 100.");
+      return;
+    }
+    const btn = document.getElementById("saveGradeBtn");
+    btn.disabled = true;
+    statusEl.textContent = "Saving…";
+    try {
+      await api.gradeSubmission(submission._id, { grade: gradeVal === "" ? null : Number(gradeVal), feedback });
+      statusEl.textContent = "✓ Saved.";
+    } catch (err) {
+      alert(err.message);
+      statusEl.textContent = "";
+    } finally {
+      btn.disabled = false;
+    }
+  });
+})();
+</script>
+</body>
+</html>

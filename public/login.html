@@ -1,0 +1,139 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Login — CourseHub</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700;800&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<div id="navbar" class="navbar"></div>
+
+<div class="form-card" id="formCard">
+  <h2 id="formTitle" style="text-align:center;">Log in to CourseHub</h2>
+
+  <div class="role-toggle">
+    <button type="button" id="roleStudent" class="active">Student</button>
+    <button type="button" id="roleInstructor">Instructor</button>
+    <button type="button" id="roleAdmin">Admin</button>
+  </div>
+
+  <form id="authForm">
+    <div class="form-group" id="nameGroup" style="display:none;">
+      <label>Full Name</label>
+      <input type="text" id="name" placeholder="e.g. Anushka Saxena">
+    </div>
+    <div class="form-group" id="classGroup" style="display:none;">
+      <label>Class</label>
+      <input type="text" id="studentClass" placeholder="e.g. B.Tech CSE, 5th Sem">
+    </div>
+    <div class="form-group" id="enrollmentGroup" style="display:none;">
+      <label>Enrollment Number</label>
+      <input type="text" id="enrollmentNumber" placeholder="e.g. ADTU2023CS045">
+    </div>
+    <div class="form-group">
+      <label>Email</label>
+      <input type="email" id="email" required placeholder="you@example.com">
+    </div>
+    <div class="form-group">
+      <label>Password</label>
+      <input type="password" id="password" required placeholder="••••••••">
+    </div>
+    <button class="btn btn-primary btn-block" type="submit" id="submitBtn">Log In</button>
+  </form>
+
+  <p style="text-align:center;font-size:0.85rem;margin-top:12px;">
+    <a href="forgot-password.html">Forgot password?</a>
+  </p>
+
+  <div id="messageBox" style="display:none;margin-top:16px;padding:14px;border-radius:8px;font-size:0.9rem;"></div>
+
+  <p style="text-align:center;font-size:0.85rem;margin-top:16px;">
+    <a href="#" id="toggleMode">New here? Create an account</a>
+  </p>
+</div>
+
+<script src="app.js"></script>
+<script>
+  renderNavbar();
+
+  let role = "student";
+  let mode = "login";
+  let lastAttemptEmail = "";
+
+  const roleStudentBtn = document.getElementById("roleStudent");
+  const roleInstructorBtn = document.getElementById("roleInstructor");
+  const roleAdminBtn = document.getElementById("roleAdmin");
+  const nameGroup = document.getElementById("nameGroup");
+  const formTitle = document.getElementById("formTitle");
+  const submitBtn = document.getElementById("submitBtn");
+  const toggleMode = document.getElementById("toggleMode");
+  const messageBox = document.getElementById("messageBox");
+
+  function updateUI() {
+    roleStudentBtn.classList.toggle("active", role === "student");
+    roleInstructorBtn.classList.toggle("active", role === "instructor");
+    roleAdminBtn.classList.toggle("active", role === "admin");
+    nameGroup.style.display = mode === "register" ? "block" : "none";
+    const showStudentFields = mode === "register" && role === "student";
+    document.getElementById("classGroup").style.display = showStudentFields ? "block" : "none";
+    document.getElementById("enrollmentGroup").style.display = showStudentFields ? "block" : "none";
+    formTitle.textContent = (mode === "register" ? "Create your " : "Log in to your ") + role + " account";
+    submitBtn.textContent = mode === "register" ? "Create Account" : "Log In";
+    toggleMode.textContent = mode === "register" ? "Already have an account? Log in" : "New here? Create an account";
+    messageBox.style.display = "none";
+  }
+
+  function showMessage(text, kind) {
+    messageBox.style.display = "block";
+    messageBox.style.background = kind === "success" ? "#e4f4e8" : "#fbe7e5";
+    messageBox.style.color = kind === "success" ? "#2c6b41" : "#9c3a2b";
+    messageBox.textContent = text;
+  }
+
+  roleStudentBtn.addEventListener("click", () => { role = "student"; updateUI(); });
+  roleInstructorBtn.addEventListener("click", () => { role = "instructor"; updateUI(); });
+  roleAdminBtn.addEventListener("click", () => { role = "admin"; updateUI(); });
+  toggleMode.addEventListener("click", (e) => {
+    e.preventDefault();
+    mode = mode === "login" ? "register" : "login";
+    updateUI();
+  });
+
+  document.getElementById("authForm").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const email = document.getElementById("email").value.trim().toLowerCase();
+    const password = document.getElementById("password").value;
+    const name = document.getElementById("name").value.trim();
+    lastAttemptEmail = email;
+    submitBtn.disabled = true;
+
+    try {
+      if (mode === "register") {
+        const studentClass = document.getElementById("studentClass").value.trim();
+        const enrollmentNumber = document.getElementById("enrollmentNumber").value.trim();
+        await api.register({ name, email, password, role, studentClass, enrollmentNumber });
+        const user = await api.login({ email, password, role });
+        session.set(user);
+        const dest = role === "student" ? "student-dashboard.html" : role === "instructor" ? "instructor-dashboard.html" : "admin-dashboard.html";
+        window.location.href = dest;
+      } else {
+        const user = await api.login({ email, password, role });
+        session.set(user);
+        const dest = role === "student" ? "student-dashboard.html" : role === "instructor" ? "instructor-dashboard.html" : "admin-dashboard.html";
+        window.location.href = dest;
+      }
+    } catch (err) {
+      showMessage(err.message, "error");
+    } finally {
+      submitBtn.disabled = false;
+    }
+  });
+
+  updateUI();
+</script>
+</body>
+</html>
