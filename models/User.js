@@ -9,8 +9,8 @@ const userSchema = new mongoose.Schema({
   studentClass: { type: String, default: "" },       // e.g. "B.Tech CSE, 5th Sem"
   enrollmentNumber: { type: String, default: "" },
   emailVerified: { type: Boolean, default: false },
-  verificationToken: { type: String, default: null },
-  verificationTokenExpires: { type: Date, default: null },
+  otpCode: { type: String, default: null },        // bcrypt hash of the current 6-digit code, never stored in plain text
+  otpExpires: { type: Date, default: null },
   resetPasswordToken: { type: String, default: null },
   resetPasswordExpires: { type: Date, default: null },
 }, { timestamps: true });

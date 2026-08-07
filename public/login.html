@@ -56,6 +56,26 @@
   </p>
 </div>
 
+<div class="form-card" id="otpCard" style="display:none;">
+  <h2 style="text-align:center;">Verify your email</h2>
+  <p style="text-align:center;color:var(--muted);font-size:0.9rem;" id="otpSubtext"></p>
+
+  <div class="form-group">
+    <label>6-digit code</label>
+    <input type="text" id="otpInput" inputmode="numeric" maxlength="6" placeholder="000000" style="text-align:center;letter-spacing:8px;font-size:1.4rem;font-family:var(--mono);">
+  </div>
+  <button class="btn btn-primary btn-block" id="verifyOtpBtn">Verify</button>
+
+  <div id="otpMessageBox" style="display:none;margin-top:16px;padding:14px;border-radius:8px;font-size:0.9rem;"></div>
+
+  <p style="text-align:center;font-size:0.85rem;margin-top:16px;">
+    Didn't get it? <a href="#" id="resendOtpLink">Resend code</a>
+  </p>
+  <p style="text-align:center;font-size:0.85rem;">
+    <a href="#" id="backToLogin">&larr; Back to login</a>
+  </p>
+</div>
+
 <script src="app.js"></script>
 <script>
   renderNavbar();
@@ -115,22 +135,91 @@
       if (mode === "register") {
         const studentClass = document.getElementById("studentClass").value.trim();
         const enrollmentNumber = document.getElementById("enrollmentNumber").value.trim();
-        await api.register({ name, email, password, role, studentClass, enrollmentNumber });
-        const user = await api.login({ email, password, role });
-        session.set(user);
-        const dest = role === "student" ? "student-dashboard.html" : role === "instructor" ? "instructor-dashboard.html" : "admin-dashboard.html";
-        window.location.href = dest;
+        const result = await api.register({ name, email, password, role, studentClass, enrollmentNumber });
+        showOtpScreen(result.email, result.role, result.devOtp);
       } else {
         const user = await api.login({ email, password, role });
         session.set(user);
-        const dest = role === "student" ? "student-dashboard.html" : role === "instructor" ? "instructor-dashboard.html" : "admin-dashboard.html";
-        window.location.href = dest;
+        goToDashboard(user.role);
       }
     } catch (err) {
-      showMessage(err.message, "error");
+      if (err.otpRequired) {
+        // Account exists but hasn't verified yet — send them straight to the OTP screen.
+        showOtpScreen(err.email, err.role);
+      } else {
+        showMessage(err.message, "error");
+      }
     } finally {
       submitBtn.disabled = false;
     }
+  });
+
+  function goToDashboard(userRole) {
+    window.location.href = userRole === "student" ? "student-dashboard.html" : userRole === "instructor" ? "instructor-dashboard.html" : "admin-dashboard.html";
+  }
+
+  // ---------- OTP screen ----------
+  const formCard = document.getElementById("formCard");
+  const otpCard = document.getElementById("otpCard");
+  const otpMessageBox = document.getElementById("otpMessageBox");
+  let otpEmail = "", otpRole = "";
+
+  function showOtpScreen(email, roleForOtp, devOtp) {
+    otpEmail = email;
+    otpRole = roleForOtp;
+    formCard.style.display = "none";
+    otpCard.style.display = "block";
+    document.getElementById("otpSubtext").textContent = `We sent a 6-digit code to ${email}.`;
+    document.getElementById("otpInput").value = "";
+    otpMessageBox.style.display = "none";
+    if (devOtp) {
+      showOtpMessage(`No email server is configured yet — here's your code directly: ${devOtp}`, "success");
+    }
+    document.getElementById("otpInput").focus();
+  }
+
+  function showOtpMessage(text, kind) {
+    otpMessageBox.style.display = "block";
+    otpMessageBox.style.background = kind === "success" ? "#e4f4e8" : "#fbe7e5";
+    otpMessageBox.style.color = kind === "success" ? "#2c6b41" : "#9c3a2b";
+    otpMessageBox.textContent = text;
+  }
+
+  document.getElementById("verifyOtpBtn").addEventListener("click", async () => {
+    const otp = document.getElementById("otpInput").value.trim();
+    if (otp.length !== 6) {
+      showOtpMessage("Enter the full 6-digit code.", "error");
+      return;
+    }
+    const btn = document.getElementById("verifyOtpBtn");
+    btn.disabled = true;
+    try {
+      const user = await api.verifyOtp(otpEmail, otpRole, otp);
+      session.set(user);
+      goToDashboard(user.role);
+    } catch (err) {
+      showOtpMessage(err.message, "error");
+    } finally {
+      btn.disabled = false;
+    }
+  });
+
+  document.getElementById("resendOtpLink").addEventListener("click", async (e) => {
+    e.preventDefault();
+    try {
+      const result = await api.resendOtp(otpEmail, otpRole);
+      showOtpMessage(result.devOtp ? `New code (no email server configured): ${result.devOtp}` : result.message, "success");
+    } catch (err) {
+      showOtpMessage(err.message, "error");
+    }
+  });
+
+  document.getElementById("backToLogin").addEventListener("click", (e) => {
+    e.preventDefault();
+    otpCard.style.display = "none";
+    formCard.style.display = "block";
+    mode = "login";
+    updateUI();
   });
 
   updateUI();

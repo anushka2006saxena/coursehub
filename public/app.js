@@ -10,11 +10,24 @@
 
 const API = "/api";
 
+async function handleApiResponse(res) {
+  const data = await res.json();
+  if (!res.ok) {
+    if (res.status === 401 && !window.location.pathname.endsWith("login.html")) {
+      // Session cookie expired or missing server-side, even though the browser
+      // still has a stale "logged in" flag — send them back to log in properly.
+      localStorage.removeItem("ocm_current_user");
+      window.location.href = "login.html";
+      return new Promise(() => {}); // stop this call chain here, page is navigating away
+    }
+    throw Object.assign(new Error(data.error || "Request failed"), data);
+  }
+  return data;
+}
+
 async function apiGet(path) {
   const res = await fetch(API + path);
-  const data = await res.json();
-  if (!res.ok) throw new Error(data.error || "Request failed");
-  return data;
+  return handleApiResponse(res);
 }
 async function apiPost(path, body) {
   const res = await fetch(API + path, {
@@ -22,9 +35,7 @@ async function apiPost(path, body) {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
   });
-  const data = await res.json();
-  if (!res.ok) throw new Error(data.error || "Request failed");
-  return data;
+  return handleApiResponse(res);
 }
 async function apiPatch(path, body) {
   const res = await fetch(API + path, {
@@ -32,15 +43,11 @@ async function apiPatch(path, body) {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
   });
-  const data = await res.json();
-  if (!res.ok) throw new Error(data.error || "Request failed");
-  return data;
+  return handleApiResponse(res);
 }
 async function apiDelete(path) {
   const res = await fetch(API + path, { method: "DELETE" });
-  const data = await res.json();
-  if (!res.ok) throw new Error(data.error || "Request failed");
-  return data;
+  return handleApiResponse(res);
 }
 
 // ---------- API client ----------
@@ -51,13 +58,15 @@ const api = {
   getStudentRoster: (email) => apiGet(`/courses/instructor/${encodeURIComponent(email)}/students`),
   createCourse: (course) => apiPost("/courses", course),
   register: (user) => apiPost("/auth/register", user),
+  verifyOtp: (email, role, otp) => apiPost("/auth/verify-otp", { email, role, otp }),
+  resendOtp: (email, role) => apiPost("/auth/resend-otp", { email, role }),
   login: (creds) => apiPost("/auth/login", creds),
-  resendVerification: (email, role) => apiPost("/auth/resend-verification", { email, role }),
+  logout: () => apiPost("/auth/logout", {}),
   forgotPassword: (email, role) => apiPost("/auth/forgot-password", { email, role }),
   resetPassword: (token, newPassword) => apiPost("/auth/reset-password", { token, newPassword }),
   getEnrollmentsForUser: (email) => apiGet(`/enrollments?user=${encodeURIComponent(email)}`),
   getEnrollmentsForCourse: (courseId) => apiGet(`/enrollments?course=${courseId}`),
-  enroll: (user, courseId) => apiPost("/enrollments", { user, courseId }),
+  enroll: (courseId) => apiPost("/enrollments", { courseId }),
   bulkEnroll: (courseId, emails) => apiPost("/enrollments/bulk", { courseId, emails }),
   updateEnrollment: (id, patch) => apiPatch(`/enrollments/${id}`, patch),
 
@@ -66,7 +75,7 @@ const api = {
   createAssignment: (a) => apiPost("/assignments", a),
   getSubmissions: (assignmentId) => apiGet(`/assignments/${assignmentId}/submissions`),
   submitAssignment: (assignmentId, body) => apiPost(`/assignments/${assignmentId}/submissions`, body),
-  getMySubmissions: (email) => apiGet(`/assignments/submissions/mine?student=${encodeURIComponent(email)}`),
+  getMySubmissions: () => apiGet(`/assignments/submissions/mine`),
   gradeSubmission: (id, patch) => apiPatch(`/assignments/submissions/${id}`, patch),
 
   getAdminStats: () => apiGet("/admin/stats"),
@@ -117,8 +126,9 @@ function renderNavbar(active) {
 
   const logoutLink = document.getElementById("logoutLink");
   if (logoutLink) {
-    logoutLink.addEventListener("click", (e) => {
+    logoutLink.addEventListener("click", async (e) => {
       e.preventDefault();
+      try { await api.logout(); } catch (err) { /* cookie may already be gone, doesn't matter */ }
       session.clear();
       window.location.href = "index.html";
     });

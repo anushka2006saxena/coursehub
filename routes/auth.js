@@ -2,17 +2,35 @@ const express = require("express");
 const crypto = require("crypto");
 const bcrypt = require("bcryptjs");
 const User = require("../models/User");
-const { sendPasswordResetEmail } = require("../utils/sendEmail");
+const { sendOtpEmail, sendPasswordResetEmail } = require("../utils/sendEmail");
+const { setAuthCookie, clearAuthCookie } = require("../middleware/auth");
 
 const router = express.Router();
 
 const RESET_EXPIRY_MS = 60 * 60 * 1000; // 1 hour
+const OTP_EXPIRY_MS = 10 * 60 * 1000;   // 10 minutes
 
 function baseUrl(req) {
   return process.env.APP_BASE_URL || `${req.protocol}://${req.get("host")}`;
 }
 
-// POST /api/auth/register
+function generateOtp() {
+  return String(crypto.randomInt(0, 1000000)).padStart(6, "0"); // e.g. "042817"
+}
+
+async function issueOtp(user) {
+  const otp = generateOtp();
+  user.otpCode = await bcrypt.hash(otp, 10); // never store the plain code
+  user.otpExpires = new Date(Date.now() + OTP_EXPIRY_MS);
+  await user.save();
+  const emailResult = await sendOtpEmail(user.email, user.name, otp);
+  // No SMTP configured yet — hand the code back directly so registration is
+  // fully testable without setting up Gmail first.
+  return emailResult && emailResult.simulated ? otp : undefined;
+}
+
+// POST /api/auth/register — creates the account (unverified) and emails a 6-digit OTP.
+// The account can't log in until /verify-otp succeeds.
 router.post("/register", async (req, res) => {
   try {
     const { name, email, password, role, studentClass, enrollmentNumber } = req.body;
@@ -27,16 +45,74 @@ router.post("/register", async (req, res) => {
 
     const passwordHash = await bcrypt.hash(password, 10);
 
-    await User.create({
+    const user = await User.create({
       name: name || email.split("@")[0],
       email: email.toLowerCase(),
       password: passwordHash,
       role,
       studentClass: role === "student" ? (studentClass || "") : "",
       enrollmentNumber: role === "student" ? (enrollmentNumber || "") : "",
+      emailVerified: false,
     });
 
-    res.status(201).json({ registered: true, message: "Account created! You can log in now." });
+    const devOtp = await issueOtp(user);
+
+    res.status(201).json({
+      registered: true,
+      otpRequired: true,
+      email: user.email,
+      role: user.role,
+      message: "We've emailed you a 6-digit code. Enter it to verify your account.",
+      devOtp,
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// POST /api/auth/verify-otp  — { email, role, otp }
+router.post("/verify-otp", async (req, res) => {
+  try {
+    const { email, role, otp } = req.body;
+    if (!email || !role || !otp) {
+      return res.status(400).json({ error: "Email, role and code are required." });
+    }
+
+    const user = await User.findOne({ email: email.toLowerCase(), role });
+    if (!user) return res.status(404).json({ error: "No matching account found." });
+    if (user.emailVerified) return res.status(400).json({ error: "This account is already verified — you can log in." });
+    if (!user.otpCode || !user.otpExpires || user.otpExpires < new Date()) {
+      return res.status(400).json({ error: "This code has expired. Request a new one." });
+    }
+
+    const match = await bcrypt.compare(otp, user.otpCode);
+    if (!match) {
+      return res.status(400).json({ error: "Incorrect code — check your email and try again." });
+    }
+
+    user.emailVerified = true;
+    user.otpCode = null;
+    user.otpExpires = null;
+    await user.save();
+
+    // Verified — log them straight in.
+    setAuthCookie(res, user);
+    res.json({ verified: true, name: user.name, email: user.email, role: user.role });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// POST /api/auth/resend-otp  — { email, role }
+router.post("/resend-otp", async (req, res) => {
+  try {
+    const { email, role } = req.body;
+    const user = await User.findOne({ email: (email || "").toLowerCase(), role });
+    if (!user) return res.status(404).json({ error: "No matching account found." });
+    if (user.emailVerified) return res.status(400).json({ error: "This account is already verified — you can log in." });
+
+    const devOtp = await issueOtp(user);
+    res.json({ resent: true, message: "A new code has been sent to your email.", devOtp });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -111,10 +187,26 @@ router.post("/login", async (req, res) => {
       return res.status(401).json({ error: "Incorrect password." });
     }
 
+    if (!user.emailVerified) {
+      return res.status(403).json({
+        error: "Please verify your email before logging in.",
+        otpRequired: true,
+        email: user.email,
+        role: user.role,
+      });
+    }
+
+    setAuthCookie(res, user);
     res.json({ name: user.name, email: user.email, role: user.role });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
+});
+
+// POST /api/auth/logout
+router.post("/logout", (req, res) => {
+  clearAuthCookie(res);
+  res.json({ loggedOut: true });
 });
 
 module.exports = router;

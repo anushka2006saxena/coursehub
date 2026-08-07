@@ -23,27 +23,24 @@ function getTransporter() {
   return transporter;
 }
 
-async function sendVerificationEmail(to, name, verifyUrl) {
+async function sendOtpEmail(to, name, otp) {
   const t = getTransporter();
 
-  const subject = "Verify your CourseHub account";
+  const subject = `${otp} is your CourseHub verification code`;
   const html = `
     <div style="font-family:sans-serif;max-width:480px;margin:0 auto;">
       <h2 style="color:#1f3864;">Welcome to CourseHub, ${name}!</h2>
-      <p>Please confirm your email address to activate your account.</p>
-      <p style="margin:24px 0;">
-        <a href="${verifyUrl}" style="background:#c9922b;color:#1f3864;padding:12px 24px;border-radius:6px;text-decoration:none;font-weight:bold;">
-          Verify My Email
-        </a>
+      <p>Enter this code to verify your email and activate your account:</p>
+      <p style="margin:24px 0;font-size:32px;font-weight:800;letter-spacing:8px;color:#1f3864;background:#f3f0e8;padding:16px 20px;border-radius:8px;text-align:center;">
+        ${otp}
       </p>
-      <p style="color:#666;font-size:13px;">Or paste this link into your browser:<br>${verifyUrl}</p>
-      <p style="color:#999;font-size:12px;">This link expires in 24 hours.</p>
+      <p style="color:#999;font-size:12px;">This code expires in 10 minutes. If you didn't create a CourseHub account, you can ignore this email.</p>
     </div>
   `;
 
   if (!t) {
     // No email credentials configured — fall back to logging so development/testing still works.
-    console.log(`\n[DEV MODE — no email sent] Verification link for ${to}:\n${verifyUrl}\n`);
+    console.log(`\n[DEV MODE — no email sent] OTP for ${to}: ${otp}\n`);
     return { simulated: true };
   }
 
@@ -86,4 +83,4 @@ async function sendPasswordResetEmail(to, name, resetUrl) {
   });
 }
 
-module.exports = { sendVerificationEmail, sendPasswordResetEmail };
+module.exports = { sendOtpEmail, sendPasswordResetEmail };
